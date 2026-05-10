@@ -1,0 +1,412 @@
+#!/usr/bin/env python3
+"""
+shabits — habit tracker
+
+Usage:
+  shabits                    today's habits + streaks
+  shabits done <name>        mark done (syncs to Nextcloud)
+  shabits undo <name>        untick today's completion
+  shabits open               open shabits.md in nvim
+  shabits graph              visual completion grid (last 5 weeks)
+  shabits stats              streak + completion rate table (30d / 90d)
+  shabits history [name]     completion log
+  shabits refresh            regenerate shabits.md
+  shabits check <name>       print "done" or "undone" for today (scripting)
+
+Config:  ~/Board/board/shabits/shabits.json   (add/edit habits here)
+History: ~/Board/board/done/shabits.csv       (append-only completion log)
+"""
+
+import json
+import csv
+import sys
+import subprocess
+from datetime import date, timedelta
+from pathlib import Path
+
+SHABITS_DIR = Path.home() / "Board" / "board" / "shabits"
+MD_FILE     = SHABITS_DIR / "shabits.md"
+JSON_FILE   = SHABITS_DIR / "shabits.json"
+CSV_FILE    = Path.home() / "Board" / "board" / "done" / "shabits.csv"
+TASKS_DIR   = Path.home() / ".local" / "share" / "vdirsyncer" / "tasks" / "tasks"
+
+DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+
+# ── habit definitions ─────────────────────────────────────────────────────────
+
+def load_habits():
+    return json.loads(JSON_FILE.read_text())
+
+HABITS = load_habits()
+
+
+# ── completion data (CSV) ─────────────────────────────────────────────────────
+
+def load():
+    """Return {habit_id: {done: [date_str, ...]}} from CSV."""
+    data = {}
+    if not CSV_FILE.exists():
+        return data
+    with open(CSV_FILE, newline="") as f:
+        reader = csv.reader(f)
+        next(reader, None)  # skip header
+        for row in reader:
+            if len(row) < 2:
+                continue
+            d, hid = row[0].strip(), row[1].strip()
+            data.setdefault(hid, {"done": []})
+            if d not in data[hid]["done"]:
+                data[hid]["done"].append(d)
+    return data
+
+def append_done(habit_id, date_str):
+    CSV_FILE.parent.mkdir(parents=True, exist_ok=True)
+    write_header = not CSV_FILE.exists()
+    with open(CSV_FILE, "a", newline="") as f:
+        w = csv.writer(f)
+        if write_header:
+            w.writerow(["date", "habit_id"])
+        w.writerow([date_str, habit_id])
+
+def remove_done(habit_id, date_str):
+    if not CSV_FILE.exists():
+        return
+    rows = []
+    with open(CSV_FILE, newline="") as f:
+        reader = csv.reader(f)
+        header = next(reader, None)
+        for row in reader:
+            if not (len(row) >= 2 and row[0].strip() == date_str and row[1].strip() == habit_id):
+                rows.append(row)
+    with open(CSV_FILE, "w", newline="") as f:
+        w = csv.writer(f)
+        if header:
+            w.writerow(header)
+        w.writerows(rows)
+
+
+# ── streak logic ──────────────────────────────────────────────────────────────
+
+def is_scheduled(habit, d):
+    return DAY_NAMES[d.weekday()] in habit["days"]
+
+def done_on(habit_id, data, d):
+    return str(d) in data.get(habit_id, {}).get("done", [])
+
+def done_today(habit_id, data):
+    return done_on(habit_id, data, date.today())
+
+def current_streak(habit_id, data):
+    habit = next(h for h in HABITS if h["id"] == habit_id)
+    streak = 0
+    d = date.today()
+    if not is_scheduled(habit, d) or not done_today(habit_id, data):
+        d -= timedelta(days=1)
+    while True:
+        if not is_scheduled(habit, d):
+            d -= timedelta(days=1)
+            if d < date.today() - timedelta(days=60):
+                break
+            continue
+        if done_on(habit_id, data, d):
+            streak += 1
+            d -= timedelta(days=1)
+        else:
+            break
+    return streak
+
+def best_streak(habit_id, data):
+    habit = next(h for h in HABITS if h["id"] == habit_id)
+    done_dates = sorted(data.get(habit_id, {}).get("done", []))
+    if not done_dates:
+        return 0
+    best = current = 0
+    d = date.fromisoformat(done_dates[0])
+    while d <= date.today():
+        if not is_scheduled(habit, d):
+            d += timedelta(days=1)
+            continue
+        if done_on(habit_id, data, d):
+            current += 1
+            best = max(best, current)
+        else:
+            current = 0
+        d += timedelta(days=1)
+    return best
+
+def fuzzy_match(query):
+    q = query.lower()
+    matches = [h for h in HABITS if q in h["id"] or q in h["name"].lower()]
+    return matches[0] if len(matches) == 1 else (matches if matches else None)
+
+
+# ── caldav sync ───────────────────────────────────────────────────────────────
+
+def mark_vtodo_complete(habit):
+    path = TASKS_DIR / habit["caldav_file"]
+    if not path.exists():
+        return
+    today = date.today()
+    new_lines = []
+    for line in path.read_text().splitlines():
+        if line.startswith("STATUS:"):
+            new_lines.append("STATUS:NEEDS-ACTION")
+        elif line.startswith("DUE"):
+            next_d = today + timedelta(days=1)
+            while not is_scheduled(habit, next_d):
+                next_d += timedelta(days=1)
+            time_part = "T070000" if "morning" in habit["id"] else "T213000"
+            new_lines.append(f"DUE;TZID=Asia/Jerusalem:{next_d.strftime('%Y%m%d')}{time_part}")
+        else:
+            new_lines.append(line)
+    path.write_text("\n".join(new_lines))
+
+def caldav_sync():
+    subprocess.run(["vdirsyncer", "sync", "nextcloud_tasks"], capture_output=True)
+
+
+# ── MD file ───────────────────────────────────────────────────────────────────
+
+def build_md(data):
+    today = date.today()
+    dow = DAY_NAMES[today.weekday()]
+    lines = [f"# System Habits — {dow} {today}", ""]
+
+    lines.append("## Today")
+    lines.append("")
+    for h in HABITS:
+        if not is_scheduled(h, today):
+            continue
+        is_done = done_today(h["id"], data)
+        streak  = current_streak(h["id"], data)
+        best    = best_streak(h["id"], data)
+        flame   = " 🔥" if streak >= 3 else ""
+        box     = "[x]" if is_done else "[ ]"
+        lines.append(f"- {box} {h['name']:<26} (streak {streak}{flame} | best {best})")
+    lines.append("")
+
+    not_today = [h for h in HABITS if not is_scheduled(h, today)]
+    if not_today:
+        lines.append("## Not today")
+        lines.append("")
+        for h in not_today:
+            lines.append(f"- · {h['name']}")
+        lines.append("")
+
+    lines += ["---", "", "## Last 14 days", ""]
+    days = [today - timedelta(days=i) for i in range(13, -1, -1)]
+    header = "  " + "".join(f" {d.strftime('%d'):>2}" for d in days)
+    lines.append(f"{'':28}{header}")
+    lines.append("  " + "─" * (28 + len(header) - 2))
+    for h in HABITS:
+        row = "  "
+        for d in days:
+            if not is_scheduled(h, d):
+                row += "  ·"
+            elif done_on(h["id"], data, d):
+                row += "  ■"
+            else:
+                row += "  □"
+        lines.append(f"  {h['name']:<26}{row}")
+    lines += ["", "  ■ done  □ missed  · not scheduled", "", "---", "",
+              "*shabits stats · shabits graph · shabits history*", ""]
+    return "\n".join(lines)
+
+def write_md(data):
+    SHABITS_DIR.mkdir(parents=True, exist_ok=True)
+    MD_FILE.write_text(build_md(data))
+    # Regenerate charts in background (non-blocking)
+    graphs_bin = Path.home() / ".local" / "bin" / "shabits-graphs"
+    if graphs_bin.exists():
+        subprocess.Popen([str(graphs_bin)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+# ── commands ──────────────────────────────────────────────────────────────────
+
+def cmd_status():
+    data = load()
+    today = date.today()
+    print(f"\n  Habits — {today}  ({DAY_NAMES[today.weekday()]})\n")
+    print(f"  {'Habit':<36} {'Done':^6} {'Streak':^8}")
+    print("  " + "─" * 52)
+    shown = 0
+    for h in HABITS:
+        if not is_scheduled(h, today):
+            continue
+        done   = done_today(h["id"], data)
+        streak = current_streak(h["id"], data)
+        check  = "✓" if done else "○"
+        flame  = " 🔥" if streak >= 3 else ""
+        print(f"  {h['name']:<36} {check:^6} {streak:^6}{flame}")
+        shown += 1
+    if not shown:
+        print("  No habits scheduled today.")
+    print()
+
+def cmd_done(query):
+    data = load()
+    today = str(date.today())
+    match = fuzzy_match(query)
+    if not match:
+        print(f"  No habit matching '{query}'.")
+        sys.exit(1)
+    if isinstance(match, list):
+        print(f"  Ambiguous: {[h['id'] for h in match]}")
+        sys.exit(1)
+    hid = match["id"]
+    if today not in data.get(hid, {}).get("done", []):
+        append_done(hid, today)
+    data = load()
+    mark_vtodo_complete(match)
+    caldav_sync()
+    streak = current_streak(hid, data)
+    flame = " 🔥" if streak >= 3 else ""
+    print(f"  ✓ {match['name']}  — streak: {streak}{flame}")
+    write_md(data)
+
+def cmd_undo(query):
+    data = load()
+    today = str(date.today())
+    match = fuzzy_match(query)
+    if not match:
+        print(f"  No habit matching '{query}'.")
+        sys.exit(1)
+    if isinstance(match, list):
+        print(f"  Ambiguous: {[h['id'] for h in match]}")
+        sys.exit(1)
+    hid = match["id"]
+    if today in data.get(hid, {}).get("done", []):
+        remove_done(hid, today)
+        print(f"  ✗ Unmarked: {match['name']} for {today}")
+    else:
+        print(f"  Not marked done today: {match['name']}")
+    write_md(load())
+
+def cmd_check(query):
+    data = load()
+    match = fuzzy_match(query)
+    if not match or isinstance(match, list):
+        print("unknown")
+        sys.exit(1)
+    print("done" if done_today(match["id"], data) else "undone")
+
+def cmd_open():
+    data = load()
+    if not MD_FILE.exists():
+        write_md(data)
+    subprocess.run(["nvim", str(MD_FILE)])
+
+def cmd_refresh():
+    write_md(load())
+    print(f"  Refreshed → {MD_FILE}")
+
+def cmd_graph():
+    data = load()
+    today = date.today()
+    monday = today - timedelta(days=today.weekday())
+    start  = monday - timedelta(weeks=4)
+    print(f"\n  Habit completion — last 5 weeks\n")
+    header_days = ""
+    d = start
+    while d <= today:
+        header_days += DAY_NAMES[d.weekday()][0] + " "
+        if d.weekday() == 6:
+            header_days += " "
+        d += timedelta(days=1)
+    print(f"  {'':36}  {header_days}")
+    print(f"  {'':36}  " + "─" * len(header_days))
+    for h in HABITS:
+        row = ""
+        d = start
+        while d <= today:
+            if not is_scheduled(h, d):
+                row += "· "
+            elif done_on(h["id"], data, d):
+                row += "■ "
+            else:
+                row += "□ "
+            if d.weekday() == 6:
+                row += " "
+            d += timedelta(days=1)
+        streak = current_streak(h["id"], data)
+        flame = "🔥" if streak >= 3 else "  "
+        print(f"  {h['name']:<36}  {row}  {streak} {flame}")
+    print()
+    print("  ■ done  □ missed  · not scheduled\n")
+
+def cmd_stats():
+    data = load()
+    today = date.today()
+    print(f"\n  Habit stats — {today}\n")
+    print(f"  {'Habit':<28} {'Streak':>6}  {'Best':>5}  {'30d':>12}  {'90d':>12}")
+    print("  " + "─" * 70)
+    for h in HABITS:
+        streak = current_streak(h["id"], data)
+        best   = best_streak(h["id"], data)
+        r30    = _rate(h["id"], data, 30)
+        r90    = _rate(h["id"], data, 90)
+        flame  = "🔥" if streak >= 3 else "  "
+        print(f"  {h['name']:<28} {streak:>5}{flame}  {best:>5}  {_bar(r30)} {r30:>4.0f}%  {_bar(r90)} {r90:>4.0f}%")
+    print()
+
+def _rate(habit_id, data, days):
+    habit = next(h for h in HABITS if h["id"] == habit_id)
+    today = date.today()
+    sched = done = 0
+    for i in range(days):
+        d = today - timedelta(days=i)
+        if is_scheduled(habit, d):
+            sched += 1
+            if done_on(habit_id, data, d):
+                done += 1
+    return (done / sched * 100) if sched else 0
+
+def _bar(pct, width=10):
+    filled = round(pct / 100 * width)
+    return "█" * filled + "░" * (width - filled)
+
+def cmd_history(query=None):
+    data = load()
+    habits = HABITS if not query else [fuzzy_match(query)]
+    for h in habits:
+        if not h:
+            continue
+        done   = sorted(data.get(h["id"], {}).get("done", []))
+        streak = current_streak(h["id"], data)
+        print(f"\n  {h['name']}  (streak: {streak})")
+        if not done:
+            print("    No completions yet.")
+        else:
+            for d in done[-14:]:
+                print(f"    ✓ {d}")
+    print()
+
+
+# ── main ──────────────────────────────────────────────────────────────────────
+
+def main():
+    args = sys.argv[1:]
+    if not args:
+        cmd_status()
+    elif args[0] == "done" and len(args) >= 2:
+        cmd_done(" ".join(args[1:]))
+    elif args[0] == "undo" and len(args) >= 2:
+        cmd_undo(" ".join(args[1:]))
+    elif args[0] == "check" and len(args) >= 2:
+        cmd_check(" ".join(args[1:]))
+    elif args[0] == "open":
+        cmd_open()
+    elif args[0] == "stats":
+        cmd_stats()
+    elif args[0] == "graph":
+        cmd_graph()
+    elif args[0] == "history":
+        cmd_history(" ".join(args[1:]) if len(args) > 1 else None)
+    elif args[0] == "refresh":
+        cmd_refresh()
+    else:
+        print(__doc__)
+
+if __name__ == "__main__":
+    main()

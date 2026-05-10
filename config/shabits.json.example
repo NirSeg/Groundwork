@@ -1,0 +1,20 @@
+[
+  {
+    "id": "morning-routine",
+    "name": "Morning Routine",
+    "days": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+    "caldav_file": "habit-morning-routine.ics"
+  },
+  {
+    "id": "exercise",
+    "name": "Exercise",
+    "days": ["Mon", "Wed", "Fri", "Sat"],
+    "caldav_file": "habit-exercise.ics"
+  },
+  {
+    "id": "read-before-sleep",
+    "name": "Read before sleep",
+    "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+    "caldav_file": "habit-read-before-sleep.ics"
+  }
+]

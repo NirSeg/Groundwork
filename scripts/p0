@@ -1,0 +1,23 @@
+#!/bin/bash
+# Show or open all P0 tasks across every sub-board
+# Usage: p0          — list all P0 tasks
+#        p0 open     — open all P0 task files in nvim tabs
+BOARD_ROOT="$HOME/Board/board"
+
+if [ "$1" = "open" ]; then
+    board-pages open p0
+    exit 0
+fi
+
+found=0
+while IFS= read -r -d '' task; do
+    p0_dir=$(dirname "$task")
+    domain_path="${p0_dir%/p0}"
+    domain="${domain_path#$BOARD_ROOT/}"
+    summary=$(grep -m1 "^summary:" "$task" 2>/dev/null | sed 's/^summary: *//')
+    name=$(basename "$task" .md | sed 's/^[0-9]*_//')
+    echo "[$domain] $name${summary:+ — $summary}"
+    found=1
+done < <(find -L "$BOARD_ROOT" -path "*/p0/*.md" -not -name "SKILL.md" -print0 | sort -z)
+
+if [ $found -eq 0 ]; then echo "No P0 tasks."; fi

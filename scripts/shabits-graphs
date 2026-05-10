@@ -1,0 +1,380 @@
+#!/usr/bin/env python3
+"""
+shabits-graphs — generate Plotly charts for shabits.md
+
+Writes to ~/Board/board/shabits/charts/:
+  completion_grid.html / .png   — 5-week per-habit heatmap
+  streaks.html / .png           — current vs best streak bars
+  monthly_rate.html / .png      — completion % per month
+  rolling_score.html / .png     — 30-day rolling score per habit
+
+Usage:
+  shabits-graphs        regenerate all charts and update shabits.md
+"""
+
+import csv
+import json
+import sys
+from datetime import date, timedelta
+from pathlib import Path
+
+import plotly.graph_objects as go
+import plotly.io as pio
+from plotly.subplots import make_subplots
+
+# ── paths ─────────────────────────────────────────────────────────────────────
+
+SHABITS_DIR = Path.home() / "Board" / "board" / "shabits"
+CHARTS_DIR  = SHABITS_DIR / "charts"
+JSON_FILE   = SHABITS_DIR / "shabits.json"
+CSV_FILE    = Path.home() / "Board" / "board" / "done" / "shabits.csv"
+MD_FILE     = SHABITS_DIR / "shabits.md"
+
+PALETTE = ["#4C9BE8", "#63C8A0", "#F5A623", "#E8605A", "#A78BFA"]
+
+DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+W = 820   # chart width
+H = 340   # chart height
+
+# ── data ──────────────────────────────────────────────────────────────────────
+
+def load_habits():
+    return json.loads(JSON_FILE.read_text())
+
+def load_completions():
+    data = {}
+    if not CSV_FILE.exists():
+        return data
+    with open(CSV_FILE, newline="") as f:
+        reader = csv.reader(f)
+        next(reader, None)
+        for row in reader:
+            if len(row) < 2:
+                continue
+            d, hid = row[0].strip(), row[1].strip()
+            data.setdefault(hid, set())
+            data[hid].add(d)
+    return data
+
+def is_scheduled(habit, d):
+    return DAY_NAMES[d.weekday()] in habit["days"]
+
+def current_streak(habit, completions):
+    done_set = completions.get(habit["id"], set())
+    today = date.today()
+    streak = 0
+    d = today
+    if not is_scheduled(habit, d) or str(d) not in done_set:
+        d -= timedelta(days=1)
+    while True:
+        if not is_scheduled(habit, d):
+            d -= timedelta(days=1)
+            if d < today - timedelta(days=60):
+                break
+            continue
+        if str(d) in done_set:
+            streak += 1
+            d -= timedelta(days=1)
+        else:
+            break
+    return streak
+
+def best_streak(habit, completions):
+    done_set = completions.get(habit["id"], set())
+    done_dates = sorted(done_set)
+    if not done_dates:
+        return 0
+    best = current = 0
+    d = date.fromisoformat(done_dates[0])
+    today = date.today()
+    while d <= today:
+        if not is_scheduled(habit, d):
+            d += timedelta(days=1)
+            continue
+        if str(d) in done_set:
+            current += 1
+            best = max(best, current)
+        else:
+            current = 0
+        d += timedelta(days=1)
+    return best
+
+
+# ── chart helpers ─────────────────────────────────────────────────────────────
+
+BASE_LAYOUT = dict(
+    paper_bgcolor="#1a1a2e",
+    plot_bgcolor="#1a1a2e",
+    font=dict(color="#e0e0e0", family="JetBrains Mono, monospace", size=12),
+    margin=dict(l=160, r=20, t=40, b=40),
+)
+
+def save(fig, name):
+    CHARTS_DIR.mkdir(parents=True, exist_ok=True)
+    html_path = CHARTS_DIR / f"{name}.html"
+    png_path  = CHARTS_DIR / f"{name}.png"
+    fig.write_html(str(html_path), include_plotlyjs="cdn", full_html=True)
+    pio.write_image(fig, str(png_path), width=W, height=H, scale=2)
+    return png_path
+
+
+# ── chart 1: completion grid (5-week heatmap) ────────────────────────────────
+
+def chart_grid(habits, completions):
+    today = date.today()
+    monday = today - timedelta(days=today.weekday())
+    start  = monday - timedelta(weeks=4)
+
+    days = []
+    d = start
+    while d <= today:
+        days.append(d)
+        d += timedelta(days=1)
+
+    # Build week labels (Mon dates)
+    week_labels = []
+    for d in days:
+        if d.weekday() == 0:
+            week_labels.append(d.strftime("%b %d"))
+
+    habit_names = [h["name"] for h in habits]
+    z = []
+    text = []
+    for h in habits:
+        done_set = completions.get(h["id"], set())
+        row_z = []
+        row_t = []
+        for d in days:
+            if not is_scheduled(h, d):
+                row_z.append(-1)   # not scheduled
+                row_t.append("—")
+            elif str(d) in done_set:
+                row_z.append(1)    # done
+                row_t.append(f"✓ {d.strftime('%b %d')}")
+            else:
+                row_z.append(0)    # missed
+                row_t.append(f"✗ {d.strftime('%b %d')}")
+        z.append(row_z)
+        text.append(row_t)
+
+    # x-axis: one tick per Monday
+    x_labels = [d.strftime("%b %d") if d.weekday() == 0 else "" for d in days]
+
+    fig = go.Figure(go.Heatmap(
+        z=z,
+        x=list(range(len(days))),
+        y=habit_names,
+        text=text,
+        hovertemplate="%{text}<extra></extra>",
+        colorscale=[
+            [0.0, "#2d2d4e"],   # not scheduled
+            [0.4, "#2d2d4e"],
+            [0.4, "#4a3040"],   # missed
+            [0.7, "#4a3040"],
+            [0.7, "#4C9BE8"],   # done
+            [1.0, "#4C9BE8"],
+        ],
+        showscale=False,
+        xgap=3,
+        ygap=3,
+    ))
+
+    tick_positions = [i for i, d in enumerate(days) if d.weekday() == 0]
+    tick_labels    = [d.strftime("%b %d") for d in days if d.weekday() == 0]
+
+    fig.update_layout(
+        **BASE_LAYOUT,
+        title=dict(text="Completion grid — last 5 weeks", x=0.01),
+        xaxis=dict(
+            tickvals=tick_positions,
+            ticktext=tick_labels,
+            showgrid=False, zeroline=False,
+        ),
+        yaxis=dict(showgrid=False, zeroline=False, autorange="reversed"),
+        height=H,
+        width=W,
+    )
+    return save(fig, "completion_grid")
+
+
+# ── chart 2: streak bars ──────────────────────────────────────────────────────
+
+def chart_streaks(habits, completions):
+    names   = [h["name"] for h in habits]
+    current = [current_streak(h, completions) for h in habits]
+    best    = [best_streak(h, completions) for h in habits]
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        name="Best streak",
+        y=names, x=best,
+        orientation="h",
+        marker_color="#2d4a6e",
+        hovertemplate="%{y}: best %{x} days<extra></extra>",
+    ))
+    fig.add_trace(go.Bar(
+        name="Current streak",
+        y=names, x=current,
+        orientation="h",
+        marker_color="#4C9BE8",
+        hovertemplate="%{y}: current %{x} days<extra></extra>",
+    ))
+    fig.update_layout(
+        **BASE_LAYOUT,
+        title=dict(text="Streaks — current vs best", x=0.01),
+        barmode="overlay",
+        xaxis=dict(title="days", showgrid=True, gridcolor="#2a2a4a", zeroline=False),
+        yaxis=dict(showgrid=False, zeroline=False, autorange="reversed"),
+        legend=dict(x=0.7, y=0.05, bgcolor="rgba(0,0,0,0)"),
+        height=H, width=W,
+    )
+    return save(fig, "streaks")
+
+
+# ── chart 3: monthly completion rate ─────────────────────────────────────────
+
+def chart_monthly(habits, completions):
+    today = date.today()
+    # last 6 months
+    months = []
+    y = today.year
+    m = today.month
+    for _ in range(6):
+        months.append((y, m))
+        m -= 1
+        if m == 0:
+            m = 12
+            y -= 1
+    months.reverse()
+
+    fig = go.Figure()
+    for i, h in enumerate(habits):
+        done_set = completions.get(h["id"], set())
+        rates = []
+        labels = []
+        for yr, mo in months:
+            first = date(yr, mo, 1)
+            last  = date(yr, mo+1, 1) - timedelta(days=1) if mo < 12 else date(yr, 12, 31)
+            sched = done = 0
+            d = first
+            while d <= min(last, today):
+                if is_scheduled(h, d):
+                    sched += 1
+                    if str(d) in done_set:
+                        done += 1
+                d += timedelta(days=1)
+            rates.append(round(done / sched * 100) if sched else 0)
+            labels.append(first.strftime("%b %y"))
+
+        fig.add_trace(go.Bar(
+            name=h["name"],
+            x=labels, y=rates,
+            marker_color=PALETTE[i % len(PALETTE)],
+            hovertemplate=f"{h['name']}: %{{y}}%<extra></extra>",
+        ))
+
+    fig.update_layout(
+        **BASE_LAYOUT,
+        title=dict(text="Monthly completion rate", x=0.01),
+        barmode="group",
+        xaxis=dict(showgrid=False, zeroline=False),
+        yaxis=dict(title="%", range=[0, 105], showgrid=True, gridcolor="#2a2a4a", zeroline=False),
+        legend=dict(x=1.0, y=1.0, bgcolor="rgba(0,0,0,0)", xanchor="right"),
+        height=H, width=W,
+    )
+    return save(fig, "monthly_rate")
+
+
+# ── chart 4: 30-day rolling score ────────────────────────────────────────────
+
+def chart_rolling(habits, completions):
+    today = date.today()
+    start = today - timedelta(days=89)   # 90-day window
+
+    days = []
+    d = start
+    while d <= today:
+        days.append(d)
+        d += timedelta(days=1)
+
+    fig = go.Figure()
+    for i, h in enumerate(habits):
+        done_set = completions.get(h["id"], set())
+        scores = []
+        for d in days:
+            window_start = d - timedelta(days=29)
+            sched = done = 0
+            wd = window_start
+            while wd <= d:
+                if is_scheduled(h, wd):
+                    sched += 1
+                    if str(wd) in done_set:
+                        done += 1
+                wd += timedelta(days=1)
+            scores.append(round(done / sched * 100) if sched else 0)
+
+        fig.add_trace(go.Scatter(
+            name=h["name"],
+            x=[d.strftime("%b %d") for d in days],
+            y=scores,
+            mode="lines",
+            line=dict(color=PALETTE[i % len(PALETTE)], width=2),
+            hovertemplate=f"{h['name']}: %{{y}}%<extra></extra>",
+        ))
+
+    fig.update_layout(
+        **BASE_LAYOUT,
+        title=dict(text="30-day rolling score", x=0.01),
+        xaxis=dict(showgrid=False, zeroline=False, nticks=10),
+        yaxis=dict(title="%", range=[0, 105], showgrid=True, gridcolor="#2a2a4a", zeroline=False),
+        legend=dict(x=1.0, y=1.0, bgcolor="rgba(0,0,0,0)", xanchor="right"),
+        height=H, width=W,
+    )
+    return save(fig, "rolling_score")
+
+
+# ── update shabits.md with chart images ───────────────────────────────────────
+
+def inject_charts_into_md(chart_paths):
+    if not MD_FILE.exists():
+        return
+
+    text = MD_FILE.read_text()
+
+    # Remove any existing charts section
+    marker = "\n---\n\n## Charts\n"
+    if marker in text:
+        text = text[:text.index(marker)]
+
+    # Build relative image links (relative to shabits.md location)
+    img_lines = ["", "---", "", "## Charts", ""]
+    for path in chart_paths:
+        rel = path.relative_to(SHABITS_DIR)
+        img_lines.append(f"![{path.stem}]({rel})")
+        img_lines.append("")
+
+    MD_FILE.write_text(text.rstrip("\n") + "\n" + "\n".join(img_lines))
+
+
+# ── main ──────────────────────────────────────────────────────────────────────
+
+def main():
+    habits      = load_habits()
+    completions = load_completions()
+
+    print("  Generating charts...")
+    paths = [
+        chart_grid(habits, completions),
+        chart_streaks(habits, completions),
+        chart_monthly(habits, completions),
+        chart_rolling(habits, completions),
+    ]
+    for p in paths:
+        print(f"  ✓ {p.relative_to(Path.home())}")
+
+    inject_charts_into_md(paths)
+    print(f"  ✓ charts injected into shabits.md")
+
+if __name__ == "__main__":
+    main()

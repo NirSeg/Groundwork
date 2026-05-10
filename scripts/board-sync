@@ -1,0 +1,143 @@
+#!/usr/bin/env python3
+"""
+board-sync — sync board p0/p1/p2 tasks to Nextcloud CalDAV as VTODOs
+
+p0 tasks → DUE today       (today's missions)
+p1 tasks → DUE end of week (this week's missions)
+p2 tasks → DUE end of month (this month's missions)
+
+Usage:
+  board-sync          sync all lanes
+  board-sync --dry    show what would be created/removed, no changes
+"""
+
+import sys
+import subprocess
+import uuid
+from datetime import date, timedelta
+from pathlib import Path
+
+BOARD_ROOT  = Path.home() / "Board" / "board"
+TASKS_DIR   = Path.home() / ".local" / "share" / "vdirsyncer" / "tasks" / "tasks"
+CATEGORY    = "board-task"
+
+LANES = {
+    "p0": "today",
+    "p1": "week",
+    "p2": "month",
+}
+
+DRY = "--dry" in sys.argv
+
+
+def end_of_week():
+    today = date.today()
+    return today + timedelta(days=(6 - today.weekday()))
+
+def end_of_month():
+    today = date.today()
+    if today.month == 12:
+        return date(today.year + 1, 1, 1) - timedelta(days=1)
+    return date(today.year, today.month + 1, 1) - timedelta(days=1)
+
+def due_for_lane(lane):
+    if lane == "p0":
+        return date.today()
+    if lane == "p1":
+        return end_of_week()
+    return end_of_month()
+
+def scan_board(lane):
+    """Return list of {id, summary} for all tasks in the given lane (follows symlinks)."""
+    import subprocess as _sp
+    result = _sp.run(
+        ["find", "-L", str(BOARD_ROOT), "-path", f"*/{lane}/*.md",
+         "-not", "-name", "SKILL.md"],
+        capture_output=True, text=True
+    )
+    tasks = []
+    for filepath in sorted(result.stdout.splitlines()):
+        path = Path(filepath)
+        content = path.read_text()
+        task_id = summary = None
+        for line in content.splitlines():
+            if line.startswith("id:"):
+                task_id = line.split(":", 1)[1].strip().strip("'\"")
+            if line.startswith("summary:"):
+                summary = line.split(":", 1)[1].strip().strip("'\"")
+        if task_id:
+            tasks.append({"id": task_id, "summary": summary or task_id, "lane": lane})
+    return tasks
+
+def ics_filename(task_id, lane):
+    return f"board-{lane}-{task_id}.ics"
+
+def existing_board_tasks():
+    """Return set of ICS filenames already synced."""
+    return {p.name for p in TASKS_DIR.glob("board-*.ics")}
+
+def make_vtodo(task, lane, due_date):
+    uid = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"board-{task['id']}"))
+    due_str = due_date.strftime("%Y%m%d")
+    now_str = date.today().strftime("%Y%m%dT%H%M%SZ")
+    return "\r\n".join([
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//board-sync//EN",
+        "BEGIN:VTODO",
+        f"UID:{uid}",
+        f"DTSTAMP:{now_str}",
+        f"CREATED:{now_str}",
+        f"SUMMARY:{task['summary']}",
+        f"DUE;VALUE=DATE:{due_str}",
+        f"CATEGORIES:{CATEGORY}",
+        f"PRIORITY:{'1' if lane == 'p0' else '5' if lane == 'p1' else '9'}",
+        "STATUS:NEEDS-ACTION",
+        "END:VTODO",
+        "END:VCALENDAR",
+        "",
+    ])
+
+def sync():
+    TASKS_DIR.mkdir(parents=True, exist_ok=True)
+    existing = existing_board_tasks()
+    desired  = {}
+
+    for lane in LANES:
+        tasks = scan_board(lane)
+        due   = due_for_lane(lane)
+        for task in tasks:
+            fname = ics_filename(task["id"], lane)
+            desired[fname] = (task, lane, due)
+
+    created = removed = 0
+
+    # Create missing
+    for fname, (task, lane, due) in desired.items():
+        path = TASKS_DIR / fname
+        if not path.exists():
+            if DRY:
+                print(f"  + {fname}  [{lane}] {task['summary']}")
+            else:
+                path.write_text(make_vtodo(task, lane, due))
+                print(f"  + {fname}  [{lane}] {task['summary']}")
+            created += 1
+
+    # Remove stale (board task no longer in any lane)
+    for fname in existing:
+        if fname not in desired:
+            path = TASKS_DIR / fname
+            if DRY:
+                print(f"  - {fname}  (removed from board)")
+            else:
+                path.unlink()
+                print(f"  - {fname}  (removed from board)")
+            removed += 1
+
+    if not DRY:
+        subprocess.run(["vdirsyncer", "sync", "nextcloud_tasks"], capture_output=True)
+
+    print(f"\n  {'[dry] ' if DRY else ''}+{created} synced, -{removed} removed")
+
+if __name__ == "__main__":
+    sync()

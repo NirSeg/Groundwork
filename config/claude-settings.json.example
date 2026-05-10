@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "additionalDirectories": [
+      "/home/YOUR_USER/Board"
+    ],
+    "allow": [
+      "Bash(echo *)",
+      "Bash(cat *)",
+      "Bash(date*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/YOUR_USER/.local/bin/groundwork-monitor",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,48 @@
+#!/bin/bash
+# habits-watch — watch ~/shabits.md for checkbox changes
+# Runs as a systemd user service. Edit [ ] → [x] to tick a habit off.
+
+HABITS_FILE="$HOME/Board/board/shabits/shabits.md"
+SHABITS="$HOME/.local/bin/shabits"
+LOG="$HOME/.local/share/habits/watch.log"
+
+mkdir -p "$(dirname "$LOG")"
+echo "$(date '+%Y-%m-%d %H:%M:%S') habits-watch started" >> "$LOG"
+
+# Watch the single file's parent directory for writes to shabits.md
+stdbuf -oL inotifywait -m -e close_write,moved_to \
+    --format '%f' "$(dirname "$HABITS_FILE")" 2>/dev/null | \
+while read -r filename; do
+    [[ "$filename" == "shabits.md" ]] || continue
+
+    # Parse every checkbox line: "- [x] <Habit Name>" or "- [ ] <Habit Name>"
+    while IFS= read -r line; do
+        # Match "- [x] Name ..." or "- [ ] Name ..."
+        if [[ "$line" =~ ^-\ \[([xX ])\]\ ([A-Za-z\ ]+) ]]; then
+            box="${BASH_REMATCH[1]}"
+            # Extract just the habit name (before any parenthesis)
+            raw_name="${BASH_REMATCH[2]}"
+            name="${raw_name%% *([[:space:]])(*}"
+            name="${name%  *}"   # trim trailing spaces
+            name="${name%%([[:space:]])*}"
+            # shellcheck disable=SC2001
+            name=$(echo "$raw_name" | sed 's/[[:space:]]*(.*//' | sed 's/[[:space:]]*$//')
+
+            if [ "$box" = "x" ] || [ "$box" = "X" ]; then
+                file_state="done"
+            else
+                file_state="undone"
+            fi
+
+            actual_state=$("$SHABITS" check "$name" 2>/dev/null)
+
+            if [ "$file_state" = "done" ] && [ "$actual_state" = "undone" ]; then
+                result=$("$SHABITS" done "$name" 2>&1)
+                echo "$(date '+%H:%M:%S') ✓ $name — $result" | tee -a "$LOG"
+            elif [ "$file_state" = "undone" ] && [ "$actual_state" = "done" ]; then
+                result=$("$SHABITS" undo "$name" 2>&1)
+                echo "$(date '+%H:%M:%S') ✗ $name — $result" | tee -a "$LOG"
+            fi
+        fi
+    done < "$HABITS_FILE"
+done

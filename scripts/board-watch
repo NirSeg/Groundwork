@@ -1,0 +1,49 @@
+#!/bin/bash
+# board-watch — watch all board p0/p1/p2 dirs for changes, trigger board-sync
+# Runs as a systemd user service. Follows symlinks (catches AI_THERAPIST board too).
+
+BOARD_ROOT="$HOME/Board/board"
+LOG="$HOME/.local/share/habits/board-watch.log"
+DEBOUNCE=3   # seconds to wait after last event before syncing
+
+mkdir -p "$(dirname "$LOG")"
+echo "$(date '+%Y-%m-%d %H:%M:%S') board-watch started" >> "$LOG"
+
+# Collect all p0/p1/p2 directories to watch (resolve symlinks so inotifywait sees real paths)
+watch_dirs=()
+while IFS= read -r dir; do
+    real=$(realpath "$dir" 2>/dev/null)
+    [ -d "$real" ] && watch_dirs+=("$real")
+done < <(find -L "$BOARD_ROOT" -type d \( -name "p0" -o -name "p1" -o -name "p2" \) 2>/dev/null | sort -u)
+
+if [ ${#watch_dirs[@]} -eq 0 ]; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') No p0/p1/p2 dirs found — exiting" >> "$LOG"
+    exit 1
+fi
+
+echo "$(date '+%Y-%m-%d %H:%M:%S') Watching ${#watch_dirs[@]} dirs" >> "$LOG"
+
+# Debounce: accumulate events for $DEBOUNCE seconds then fire one sync
+pending_pid=""
+
+trigger_sync() {
+    board-sync >> "$LOG" 2>&1
+    board-pages >> "$LOG" 2>&1
+    echo "$(date '+%H:%M:%S') board-sync + board-pages fired" >> "$LOG"
+}
+
+stdbuf -oL inotifywait -m -e create,delete,moved_to,moved_from \
+    --format '%w%f' "${watch_dirs[@]}" 2>/dev/null | \
+while read -r path; do
+    # Only care about .md files (symlinks are .md)
+    [[ "$path" == *.md ]] || continue
+
+    # Cancel existing debounce timer
+    if [ -n "$pending_pid" ] && kill -0 "$pending_pid" 2>/dev/null; then
+        kill "$pending_pid" 2>/dev/null
+    fi
+
+    # Start new debounce timer
+    (sleep "$DEBOUNCE" && trigger_sync) &
+    pending_pid=$!
+done

@@ -1,0 +1,11 @@
+[Unit]
+Description=Habit tick-off file watcher
+After=default.target
+
+[Service]
+ExecStart=%h/.local/bin/habits-watch
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

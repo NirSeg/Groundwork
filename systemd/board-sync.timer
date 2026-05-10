@@ -1,0 +1,9 @@
+[Unit]
+Description=Sync board tasks to CalDAV — hourly fallback
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=60min
+
+[Install]
+WantedBy=timers.target
