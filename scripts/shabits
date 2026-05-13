@@ -143,24 +143,10 @@ def fuzzy_match(query):
 
 # ── caldav sync ───────────────────────────────────────────────────────────────
 
-def advance_vtodo_due(habit):
-    path = TASKS_DIR / habit["caldav_file"]
-    if not path.exists():
-        return
-    today = date.today()
-    new_lines = []
-    for line in path.read_text().splitlines():
-        if line.startswith("STATUS:"):
-            new_lines.append("STATUS:NEEDS-ACTION")
-        elif line.startswith("DUE"):
-            next_d = today + timedelta(days=1)
-            while not is_scheduled(habit, next_d):
-                next_d += timedelta(days=1)
-            time_part = "T070000" if "morning" in habit["id"] else "T213000"
-            new_lines.append(f"DUE;TZID=Asia/Jerusalem:{next_d.strftime('%Y%m%d')}{time_part}")
-        else:
-            new_lines.append(line)
-    path.write_text("\n".join(new_lines))
+def _mark_today_complete_via_caldav(habit):
+    caldav_bin = Path.home() / ".local" / "bin" / "shabits-caldav"
+    if caldav_bin.exists():
+        subprocess.run([str(caldav_bin), "mark-done", habit["id"]], capture_output=True)
 
 def caldav_sync():
     subprocess.run(["vdirsyncer", "sync", "nextcloud_tasks"], capture_output=True)
@@ -258,7 +244,7 @@ def cmd_done(query):
     if today not in data.get(hid, {}).get("done", []):
         append_done(hid, today)
     data = load()
-    advance_vtodo_due(match)
+    _mark_today_complete_via_caldav(match)
     caldav_sync()
     streak = current_streak(hid, data)
     flame = " 🔥" if streak >= 3 else ""
