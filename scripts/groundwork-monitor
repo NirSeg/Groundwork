@@ -57,7 +57,7 @@ def check_sync_freshness():
     val = r.stdout.strip().replace("LastTriggerUSec=", "")
     if val and val != "n/a" and val != "0":
         try:
-            last = datetime.strptime(val[:19], "%a %Y-%m-%d %H:%M:%S")
+            last = datetime.strptime(val[:23], "%a %Y-%m-%d %H:%M:%S")
             if datetime.now() - last > timedelta(hours=3):
                 issues.append(f"board-sync.timer last ran {val} — may be stalled")
         except Exception:

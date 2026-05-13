@@ -14,7 +14,7 @@ while IFS= read -r -d '' task; do
     p0_dir=$(dirname "$task")
     domain_path="${p0_dir%/p0}"
     domain="${domain_path#$BOARD_ROOT/}"
-    summary=$(grep -m1 "^summary:" "$task" 2>/dev/null | sed 's/^summary: *//')
+    summary=$(grep -m1 "^summary:" "$task" 2>/dev/null | sed "s/^summary: *//;s/^['\"]//;s/['\"]$//")
     name=$(basename "$task" .md | sed 's/^[0-9]*_//')
     echo "[$domain] $name${summary:+ — $summary}"
     found=1

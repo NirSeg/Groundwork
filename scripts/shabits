@@ -143,7 +143,7 @@ def fuzzy_match(query):
 
 # ── caldav sync ───────────────────────────────────────────────────────────────
 
-def mark_vtodo_complete(habit):
+def advance_vtodo_due(habit):
     path = TASKS_DIR / habit["caldav_file"]
     if not path.exists():
         return
@@ -258,7 +258,7 @@ def cmd_done(query):
     if today not in data.get(hid, {}).get("done", []):
         append_done(hid, today)
     data = load()
-    mark_vtodo_complete(match)
+    advance_vtodo_due(match)
     caldav_sync()
     streak = current_streak(hid, data)
     flame = " 🔥" if streak >= 3 else ""

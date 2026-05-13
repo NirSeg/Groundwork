@@ -18,14 +18,9 @@ while read -r filename; do
     # Parse every checkbox line: "- [x] <Habit Name>" or "- [ ] <Habit Name>"
     while IFS= read -r line; do
         # Match "- [x] Name ..." or "- [ ] Name ..."
-        if [[ "$line" =~ ^-\ \[([xX ])\]\ ([A-Za-z\ ]+) ]]; then
+        if [[ "$line" =~ ^-\ \[([xX ])\]\ ([A-Za-z0-9\ \-]+) ]]; then
             box="${BASH_REMATCH[1]}"
-            # Extract just the habit name (before any parenthesis)
             raw_name="${BASH_REMATCH[2]}"
-            name="${raw_name%% *([[:space:]])(*}"
-            name="${name%  *}"   # trim trailing spaces
-            name="${name%%([[:space:]])*}"
-            # shellcheck disable=SC2001
             name=$(echo "$raw_name" | sed 's/[[:space:]]*(.*//' | sed 's/[[:space:]]*$//')
 
             if [ "$box" = "x" ] || [ "$box" = "X" ]; then
