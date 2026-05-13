@@ -32,13 +32,15 @@ ok "Dependencies OK"
 # ── Python packages ───────────────────────────────────────────────────────────
 
 python3 -c "import plotly" 2>/dev/null || {
-    warn "plotly not found — installing with pip..."
-    pip install --user plotly kaleido
+    warn "plotly not found — attempting install..."
+    if command -v pacman &>/dev/null; then
+        sudo pacman -S --noconfirm python-plotly || warn "Could not install python-plotly — run: sudo pacman -S python-plotly"
+    else
+        python3 -m pip install --user plotly || warn "Could not install plotly"
+    fi
 }
-python3 -c "import kaleido" 2>/dev/null || {
-    warn "kaleido not found — installing with pip..."
-    pip install --user kaleido
-}
+python3 -c "import kaleido" 2>/dev/null || \
+    warn "kaleido not found — PNG chart export disabled (install manually: sudo pip install kaleido --break-system-packages)"
 ok "Python packages OK"
 
 # ── board directory structure ─────────────────────────────────────────────────
