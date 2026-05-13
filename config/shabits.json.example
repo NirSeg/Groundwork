@@ -3,18 +3,21 @@
     "id": "morning-routine",
     "name": "Morning Routine",
     "days": ["Mon", "Tue", "Wed", "Thu", "Fri"],
-    "caldav_file": "habit-morning-routine.ics"
+    "due_time": "070000",
+    "calendar_block": { "start": "06:00", "end": "07:00" }
   },
   {
     "id": "exercise",
     "name": "Exercise",
     "days": ["Mon", "Wed", "Fri", "Sat"],
-    "caldav_file": "habit-exercise.ics"
+    "due_time": "120000",
+    "calendar_block": { "start": "11:00", "end": "12:00" }
   },
   {
     "id": "read-before-sleep",
     "name": "Read before sleep",
     "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-    "caldav_file": "habit-read-before-sleep.ics"
+    "due_time": "223000",
+    "calendar_block": { "start": "22:00", "end": "23:00" }
   }
 ]
