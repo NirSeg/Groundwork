@@ -1,0 +1,6 @@
+[Unit]
+Description=Generate and sync shabits VTODOs to CalDAV
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/shabits-caldav run

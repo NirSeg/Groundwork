@@ -1,0 +1,9 @@
+[Unit]
+Description=Daily shabits CalDAV sync
+
+[Timer]
+OnBootSec=1min
+OnCalendar=*-*-* 06:00:00
+
+[Install]
+WantedBy=timers.target

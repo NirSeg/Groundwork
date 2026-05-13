@@ -150,6 +150,18 @@ def cleanup(days=CLEANUP_DAYS, tasks_dir=None):
     return removed
 
 
+def cmd_run():
+    habits = load_habits()
+    n = generate_today(habits)
+    print(f"  generated {n} VTODOs for today")
+    subprocess.run(["vdirsyncer", "sync", "nextcloud_tasks"], capture_output=True)
+    n = sync_completions(habits)
+    print(f"  synced {n} phone completions → shabits.csv")
+    n = cleanup()
+    print(f"  cleaned up {n} old VTODOs")
+    subprocess.run(["vdirsyncer", "sync", "nextcloud_tasks"], capture_output=True)
+
+
 def cmd_mark_done(habit_id):
     habits = load_habits()
     habit  = next((h for h in habits if h["id"] == habit_id), None)
@@ -159,9 +171,27 @@ def cmd_mark_done(habit_id):
     mark_today_complete(habit)
 
 
-if __name__ == "__main__":
+def main():
     args = sys.argv[1:]
-    if args and args[0] == "mark-done" and len(args) == 2:
+    if not args or args[0] == "run":
+        cmd_run()
+    elif args[0] == "generate":
+        habits = load_habits()
+        n = generate_today(habits)
+        print(f"  generated {n} VTODOs")
+    elif args[0] == "sync":
+        habits = load_habits()
+        subprocess.run(["vdirsyncer", "sync", "nextcloud_tasks"], capture_output=True)
+        n = sync_completions(habits)
+        print(f"  synced {n} phone completions")
+    elif args[0] == "cleanup":
+        n = cleanup()
+        print(f"  cleaned up {n} old VTODOs")
+    elif args[0] == "mark-done" and len(args) == 2:
         cmd_mark_done(args[1])
     else:
         print(__doc__)
+
+
+if __name__ == "__main__":
+    main()

@@ -78,6 +78,11 @@ for script in shabits shabits-graphs habits-watch board-pages board-watch board-
     ok "Installed $script → $dst"
 done
 
+# shabits-caldav is named with underscores for Python import compatibility
+cp "$SCRIPT_DIR/scripts/shabits_caldav.py" "$SCRIPTS_DST/shabits-caldav"
+chmod +x "$SCRIPTS_DST/shabits-caldav"
+ok "Installed shabits-caldav → $SCRIPTS_DST/shabits-caldav"
+
 # ── Claude Code settings ──────────────────────────────────────────────────────
 
 CLAUDE_CFG="$HOME/Board/.claude/settings.json"
@@ -92,14 +97,14 @@ fi
 # ── systemd services ──────────────────────────────────────────────────────────
 
 mkdir -p "$SYSTEMD_DST"
-for svc in habits-watch.service board-watch.service board-sync.service board-sync.timer; do
+for svc in habits-watch.service board-watch.service board-sync.service board-sync.timer shabits-caldav.service shabits-caldav.timer; do
     cp "$SCRIPT_DIR/systemd/$svc" "$SYSTEMD_DST/$svc"
     ok "Installed $svc"
 done
 
 systemctl --user daemon-reload
 
-for svc in habits-watch board-watch board-sync.timer; do
+for svc in habits-watch board-watch board-sync.timer shabits-caldav.timer; do
     systemctl --user enable --now "$svc" 2>/dev/null && ok "Enabled $svc" || warn "Could not enable $svc (enable manually)"
 done
 
