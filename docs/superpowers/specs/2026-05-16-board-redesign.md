@@ -199,6 +199,7 @@ Two ICS types generated from schedule.json `p0` and `p1` sections:
 - One per time_block per event
 - Filename: `event-{issue}-{event-id}-{date}-{start}.ics`
 - UID: UUID5(NAMESPACE_DNS, `event-{issue}-{event-id}-{date}-{start}`)
+- `CATEGORIES:board-event,{issue}` — e.g. `CATEGORIES:board-event,cv`
 - Stays in CalDAV permanently — calendar record of work sessions
 - Generated for both p0 (today) and p1 events that have time_blocks
 
@@ -206,6 +207,7 @@ Two ICS types generated from schedule.json `p0` and `p1` sections:
 - One per task
 - Filename: `task-{issue}-{event-id}-{task-id}-{date}.ics`
 - UID: UUID5(NAMESPACE_DNS, `task-{issue}-{event-id}-{task-id}-{date}`)
+- `CATEGORIES:board-task,{issue}` — e.g. `CATEGORIES:board-task,cv`
 - STATUS: NEEDS-ACTION / COMPLETED
 - Deleted 3 days after completion
 - Generated for p0 tasks; p1 events without time_blocks get a single VTODO with due date
@@ -286,3 +288,15 @@ Aggregation triggers:
 | `board-aggregate` | merge all issues → board-level files |
 | `board-watch` | file watcher: md↔schedule.json bidirectional sync + triggers aggregate |
 | `board-pages` | generate done.md + graphs from history.csv (called by overflow) |
+
+---
+
+## SKILL.md
+
+The current `board/SKILL.md` is for the old system and must be fully rewritten as part of this implementation. The new SKILL.md should document:
+- The `issues/` directory layout and grouping folder rules
+- How to read and write `schedule.json` (adding events, tasks, promoting p2→p1)
+- How to interpret `p0.md`, `p1.md`, `p2.md`
+- Which scripts to call for which operations
+- The SMART task format and Eisenhower lane definitions
+- How CalDAV tags map to issues (`CATEGORIES:board-task,{issue}`)
