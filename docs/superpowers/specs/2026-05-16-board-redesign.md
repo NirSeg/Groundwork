@@ -19,7 +19,7 @@ board/
 ├── SKILL.md
 ├── graphs/
 └── issues/
-    ├── shabits/           ← no p1/p2
+    ├── shabits/           ← real directory, no p1/p2
     │   ├── p0.md
     │   ├── done.md
     │   ├── history.csv
@@ -27,24 +27,32 @@ board/
     │   ├── SKILL.md
     │   └── graphs/
     ├── projects/          ← grouping folder only, no own files
-    │   └── cv/
-    │       ├── p0.md
-    │       ├── p1.md
-    │       ├── p2.md
-    │       ├── done.md
-    │       ├── history.csv
-    │       ├── schedule.json
-    │       ├── SKILL.md
-    │       └── graphs/
+    │   └── cv  →  ~/Projects/cv/.board/          ← symlink
     ├── reading-material/  ← grouping folder only
-    │   ├── mvg/
-    │   ├── papers/
-    │   └── rl/
+    │   ├── mvg     →  ~/Projects/mvg/.board/     ← symlink
+    │   ├── papers  →  ~/Projects/papers/.board/  ← symlink
+    │   └── rl      →  ~/Projects/rl/.board/      ← symlink
     └── work/              ← grouping folder only
-        └── ai_therapist/
+        └── ai_therapist  →  ~/Projects/AI_Therapist/.board/  ← symlink
 ```
 
-Grouping folders (`projects/`, `reading-material/`, `work/`) are pure containers with no files of their own.
+**Symlink rule:** every issue under a grouping folder is a symlink to `~/Projects/<name>/.board/`. Each `.board/` directory lives inside its project repo and contains the full issue layout:
+
+```
+~/Projects/AI_Therapist/.board/
+├── p0.md
+├── p1.md
+├── p2.md
+├── done.md
+├── history.csv
+├── schedule.json
+├── SKILL.md
+└── graphs/
+```
+
+`shabits/` is the only real (non-symlinked) issue directory — it has no separate project repo.
+
+Grouping folders (`projects/`, `reading-material/`, `work/`) are real directories containing only symlinks. All scripts use `find -L` / `followlinks=True` to traverse them.
 
 ---
 
