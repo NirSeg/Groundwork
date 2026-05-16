@@ -133,8 +133,8 @@ The question that determines lane is **when**. p2 is not a vague backlog — mis
 - `p1` events: optional `due` and/or `time_blocks`
 - `p2`: not in schedule.json — lives only in p2.md
 - `done`: last 3 days of completed events, pruned at EOD; edits here sync back to VEVENT DESCRIPTION in CalDAV
-- `actual` field (optional, `done` events only): `["HH:MM", "HH:MM"]` actual start/end of the session — used for actual-vs-planned graphs. If absent, `time_blocks` is used as the estimate.
-- Recurring events (shabits): include `"recurring": {"days": ["Mon", ...]}` field; VEVENTs use RRULE in CalDAV
+- `actual` field (optional, `done` events only): `["HH:MM", "HH:MM"]` actual start/end of the session — used for actual-vs-planned graphs. If absent, `time_blocks` is used as the estimate. **Deferred — fill in once the system is running and you decide you want it.**
+- Recurring events (shabits): include `"recurring": {"days": ["Mon", ...]}` field; VEVENTs are generated fresh per day (no RRULE) so each occurrence can have its own DESCRIPTION
 
 Board-level `schedule.json` is merged from all issues at aggregation time.
 
@@ -297,7 +297,7 @@ Everything in schedule.json (`p0`, `p1`, `done`) syncs to CalDAV. `p2` has no Ca
   ```
   DESCRIPTION:Install ROCm drivers\nConfigure PyTorch
   ```
-- Shabits VEVENTs use RRULE for their recurring days (e.g. `RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,SU`)
+- Shabits VEVENTs are generated fresh per day (no RRULE) so each occurrence can carry its own DESCRIPTION; handled by `shabits-caldav` separately
 
 ### VTODO (tasks)
 
@@ -322,7 +322,7 @@ Everything in schedule.json (`p0`, `p1`, `done`) syncs to CalDAV. `p2` has no Ca
 ### What replaces what
 
 - Old `board-sync` (p0/p1/p2 directory scanning) → replaced by this CalDAV generator
-- `shabits-caldav` → merged into `board-sync`; shabits handled as recurring VEVENTs with RRULE
+- `shabits-caldav` → unchanged, habits remain a separate concern with fresh-per-day VEVENTs
 
 ---
 
@@ -396,7 +396,7 @@ Aggregation is triggered by:
 | Script | Role |
 |---|---|
 | `board-generate` | schedule.json → p0.md / p1.md / done.md (per issue) |
-| `board-sync` | schedule.json → ICS files + vdirsyncer; includes shabits recurring VEVENTs |
+| `board-sync` | schedule.json → ICS files + vdirsyncer (non-shabits events only) |
 | `board-overflow` | end-of-day: p0→done/p1, prune, history.csv, done.md, CalDAV sync |
 | `board-aggregate` | merge all issues → board-level files |
 | `board-watch` | file watcher: md↔schedule.json bidirectional sync (issue and board level) + triggers aggregate |
