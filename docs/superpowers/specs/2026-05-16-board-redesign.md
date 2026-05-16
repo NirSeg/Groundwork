@@ -234,9 +234,25 @@ History.csv and done.md are **not** updated in real-time — only at end of day.
 
 ---
 
+## What Enters schedule.json
+
+| Item | Enters schedule.json? | Section |
+|---|---|---|
+| Self-scheduled work session today | Yes | `p0` |
+| Self-scheduled work session this week | Yes | `p1` |
+| Completed event (last 3 days) | Yes | `done` |
+| Future event (not this week) | No | `p2.md` only |
+| External meetings, work calls, appointments | No | Separate calendar |
+| Events older than 3 days | No | `history.csv` only |
+| Shabits recurring habits | Yes (in shabits/schedule.json) | `p0` |
+
+---
+
 ## CalDAV Generation
 
-Two ICS types generated from schedule.json `p0`, `p1`, and `done` sections:
+**Scope:** Only self-scheduled board work sessions enter CalDAV from the board. External meetings, work calls, or appointments are kept in a separate calendar and never put into schedule.json or the board.
+
+Everything in schedule.json (`p0`, `p1`, `done`) syncs to CalDAV. `p2` has no CalDAV representation.
 
 ### VEVENT (calendar blocks)
 
@@ -245,19 +261,32 @@ Two ICS types generated from schedule.json `p0`, `p1`, and `done` sections:
 - UID: UUID5(NAMESPACE_DNS, `event-{issue}-{event-id}-{date}-{start}`)
 - `CATEGORIES:board-event,{issue}` — e.g. `CATEGORIES:board-event,cv`
 - Stays in CalDAV permanently — calendar record of work sessions
-- Generated for p0 and p1 events that have time_blocks; `done` events update their existing VEVENT in place
-- Tasks are always included in the `DESCRIPTION` field (one per line, `[x]` or `[ ]` prefix)
-- Any edit to tasks in `done` section of schedule.json triggers a VEVENT DESCRIPTION update on next CalDAV sync
+- Generated for p0 and p1 events with time_blocks; `done` events update their existing VEVENT DESCRIPTION in place
+- Tasks always appear in `DESCRIPTION` as a plain text list (one per line, no checkboxes):
+  ```
+  DESCRIPTION:Install ROCm drivers\nConfigure PyTorch
+  ```
 
 ### VTODO (tasks)
 
-- One per task — **p0 only**
-- Filename: `task-{issue}-{event-id}-{task-id}-{date}.ics`
-- UID: UUID5(NAMESPACE_DNS, `task-{issue}-{event-id}-{task-id}-{date}`)
+- One per task — **p0 and p1**
+- Filename: `task-{issue}-{event-id}-{task-id}.ics`
+- UID: UUID5(NAMESPACE_DNS, `task-{issue}-{event-id}-{task-id}`)
 - `CATEGORIES:board-task,{issue}` — e.g. `CATEGORIES:board-task,cv`
 - STATUS: NEEDS-ACTION / COMPLETED
+- `DUE`: set to end of event time_block (p0), or event `due` date (p1 without time_blocks)
 - Deleted 3 days after completion
-- p1 events are **not** represented as VTODOs — tasks for p1 events appear only in the DESCRIPTION field of the corresponding VEVENT
+- `done` events: no new VTODOs generated — tasks already completed, DESCRIPTION updated only
+
+### CalDAV sync summary
+
+| Section | VEVENT | VTODO |
+|---|---|---|
+| p0 (has time_blocks) | Yes | Yes, one per task |
+| p1 (has time_blocks) | Yes | Yes, one per task |
+| p1 (no time_blocks) | No | Yes, one per task with due date |
+| done | Update DESCRIPTION only | No |
+| p2 | No | No |
 
 ### What replaces what
 
