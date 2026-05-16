@@ -26,15 +26,21 @@ board/
 
 Each issue owns its own `schedule.json`, `history.csv`, `p0.md`, `p1.md`, `p2.md`. The board-level files are aggregated views — never edit them directly.
 
+## Mental Model
+
+- **Goals** = Issues — active projects only. Added manually when you start working on something new.
+- **Missions** = Events — a specific work session with a clear outcome (SMART applies to missions first).
+- **Todos** = Tasks — SMART action items within a mission, sized to fit the time block.
+
 ## Priority Lanes — Time Horizon
 
 | Lane | Horizon | Decision rule | In schedule.json |
 |------|---------|---------------|-----------------|
-| p0 | Today | Has a scheduled time block for today | `date` + `time_blocks` required |
-| p1 | This week | Due date or planned time block within the week | `due` and/or `time_blocks` optional |
-| p2 | Someday | Future idea — no date, no schedule | Not present — p2.md only |
+| p0 | Today | Has a time block scheduled for today | `date` + `time_blocks` required |
+| p1 | This week | Due or time-blocked within the current week | `due` and/or `time_blocks` optional |
+| p2 | This month / coming months | Planned but not this week — may have due dates | Not present — p2.md only |
 
-The question that determines lane is **when**, not urgency or importance.
+The question that determines lane is **when**. p2 is not a vague backlog — missions there are real planned work, just further out than this week.
 
 ## schedule.json Format (per issue)
 

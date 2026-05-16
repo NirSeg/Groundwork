@@ -64,17 +64,24 @@ Grouping folders (`projects/`, `reading-material/`, `work/`) are real directorie
 
 ---
 
-## Priority Lanes — Time Horizon Model
+## Mental Model
+
+Three levels of work:
+- **Goals** = Issues — what you're actively working on. Only active goals live in the board. A goal is added manually when you start working on it, typically when a previous goal wraps up.
+- **Missions** = Events — a specific, time-bounded work session within a goal. SMART applies here first: a mission should have a clear outcome so you know when it's done.
+- **Todos** = Tasks — SMART action items within a mission, sized to fit the time block.
+
+Goals/Missions/Todos are the mental model. The files use p0/p1/p2, events, and tasks — no renaming in headers.
+
+## Priority Lanes — Time Horizon
 
 | Lane | Horizon | Decision rule |
 |------|---------|---------------|
-| p0 | Today | Has a scheduled time block for today |
-| p1 | This week | Has a due date or planned time block within the week |
-| p2 | Someday | Future idea — no date, no schedule |
+| p0 | Today | Has a time block scheduled for today |
+| p1 | This week | Due or time-blocked within the current week |
+| p2 | This month / coming months | Planned work, but not this week — may have due dates and time blocks |
 
-The question that determines lane is **when**, not urgency or importance. When something in p2 gets a due date or you decide to work on it this week, it moves to p1. When you schedule a time block for today, it moves to p0.
-
-Tasks follow the SMART model (Specific, Measurable, Achievable, Relevant, Time-bounded).
+The question that determines lane is **when**. p2 is not a vague backlog — missions there can have due dates and time blocks, they're just further out than this week. When a p2 mission moves into the current week it graduates to p1; when it gets a time block today it moves to p0.
 
 ---
 
