@@ -13,7 +13,7 @@ board/
 ├── p0.md              ← generated, today's schedule (chronological, aggregated)
 ├── p1.md              ← generated, this week (aggregated)
 ├── p2.md              ← flat list, manually maintained (aggregated)
-├── done.md            ← daily review: last 3 days completions + graphs + missed shabits (generated, updated EOD)
+├── done.md            ← daily review: last 3 days completions + graphs (generated, updated EOD)
 ├── schedule.json      ← merged from all issues (generated)
 ├── history.csv        ← all past tasks + events (merged, updated EOD)
 ├── SKILL.md
@@ -119,6 +119,7 @@ The question that determines lane is **when**. p2 is not a vague backlog — mis
       "title": "Debug data loader",
       "date": "2026-05-14",
       "time_blocks": [["14:00", "16:00"]],
+      "actual": ["14:05", "15:50"],
       "tasks": [
         {"id": "t1", "text": "Reproduce crash", "done": true},
         {"id": "t2", "text": "Fix off-by-one in batch index", "done": true}
@@ -132,7 +133,8 @@ The question that determines lane is **when**. p2 is not a vague backlog — mis
 - `p1` events: optional `due` and/or `time_blocks`
 - `p2`: not in schedule.json — lives only in p2.md
 - `done`: last 3 days of completed events, pruned at EOD; edits here sync back to VEVENT DESCRIPTION in CalDAV
-- Recurring events (shabits): include `"recurring": {"days": ["Mon", ...]}` field, no RRULE in CalDAV
+- `actual` field (optional, `done` events only): `["HH:MM", "HH:MM"]` actual start/end of the session — used for actual-vs-planned graphs. If absent, `time_blocks` is used as the estimate.
+- Recurring events (shabits): include `"recurring": {"days": ["Mon", ...]}` field; VEVENTs use RRULE in CalDAV
 
 Board-level `schedule.json` is merged from all issues at aggregation time.
 
@@ -142,8 +144,15 @@ Board-level `schedule.json` is merged from all issues at aggregation time.
 
 Events sorted chronologically by first time_block start. Events without time blocks go under `## Unscheduled` at the bottom.
 
+Night routine shabits from the previous evening appear in a `## Shabits — Last Night` section at the top of the next morning's p0.md so they can be ticked off before starting the day. This keeps all actionable items in p0.md — done.md is purely retrospective.
+
 ```markdown
 # CV — Fri 2026-05-16
+
+## Shabits — Last Night
+- [ ] Prepare for bed
+- [ ] Evening Meditation
+- [ ] Read before sleep
 
 ## Set up ROCm environment  10:00–12:00
 - [ ] Install ROCm drivers
@@ -160,6 +169,10 @@ Board-level `p0.md` groups by issue heading, same chronological ordering:
 # Board — Fri 2026-05-16
 
 ## Shabits
+### Shabits — Last Night
+- [ ] Prepare for bed
+- [ ] Evening Meditation
+
 ### Morning habits  07:00–07:30
 - [ ] Morning Routine
 - [ ] Morning Meditation
@@ -193,44 +206,62 @@ Flat list of event titles only — no dates, no tasks, no connection to schedule
 
 ## done.md Format
 
-Daily review interface generated from `history.csv` and `shabits.csv`. Updated at end of day only.
+Purely retrospective. Generated from `history.csv` and `shabits.csv`. Updated at end of day only. Night routine habits are reviewed in p0.md the next morning, not here.
 
 Content per issue (last 3 days):
 - Completed events with their tasks, grouped by date
+- Actual vs planned time per event (where `actual` field is present)
 - Completion graphs from `graphs/`
 
 For shabits specifically:
-- Shows which habits were missed yesterday
+- Shows which habits were missed in the last 3 days
 - Missed habits that were actually done but not ticked off can be retroactively marked complete
 - Any habit missed yesterday that cannot be confirmed done is flagged **"must complete today"**
-
-Night routine shabits (prepare-for-bed, evening meditation, read-before-sleep) are treated as the next morning's tasks — they appear in the next day's `done.md` review window.
 
 ---
 
 ## Bidirectional Sync
 
-File watcher monitors all issue-level `p0.md`, `p1.md`, and `schedule.json` files.
+File watcher monitors all issue-level `p0.md`, `p1.md`, `done.md`, and `schedule.json` files, **and** the board-level `p0.md`, `p1.md`, `done.md`. Changes propagate in both directions between board-level and issue-level files.
 
 ### md → schedule.json (real-time)
 
-| Change in md | Engine action |
-|---|---|
-| `[x]` task checked | `done: true` in schedule.json |
-| New `- [ ] text` line added | New task entry in event |
-| New `## Title  HH:MM–HH:MM` heading | New p0 event in schedule.json |
-| New `## Title  (due: ...)` heading | New p1 event in schedule.json |
-| Event title renamed | Update title in schedule.json |
+| File | Change | Engine action |
+|---|---|---|
+| p0.md | `[x]` task checked | `done: true` in schedule.json p0 |
+| p0.md | `[ ]` task checked in "Shabits — Last Night" | marks habit done in shabits schedule.json |
+| p0.md | New `- [ ] text` line added | New task entry in event |
+| p0.md | New `## Title  HH:MM–HH:MM` heading | New p0 event in schedule.json |
+| p0.md | New `## Title  (due: ...)` heading | New p1 event in schedule.json |
+| p0.md | Event title renamed | Update title in schedule.json |
+| p1.md | New `## Title  (due: ...)` heading | New p1 event in schedule.json |
+| done.md | `[x]` task checked | `done: true` in schedule.json `done` section |
+| done.md | `[ ]` task unchecked | `done: false` in schedule.json `done` section |
+| done.md | New `- [ ] text` line added | New task entry in `done` event |
 
 ### schedule.json → md (real-time)
 
 | Change in schedule.json | Engine action |
 |---|---|
-| Event added/edited | Regenerate relevant md file |
-| Task marked done | Check off `[x]` in md |
+| Event added/edited in p0/p1 | Regenerate relevant md file |
+| Task marked done in p0 | Check off `[x]` in p0.md |
+| Event moved from p0 to done | Remove from p0.md; add to done.md |
 | Event removed | Remove from md |
+| Task edited in done section | Update done.md |
 
-History.csv and done.md are **not** updated in real-time — only at end of day.
+### Board ↔ Issue bidirectional sync
+
+The board-level md files are aggregated views, but edits in them propagate back to the source issue:
+
+| Change in board-level md | Engine action |
+|---|---|
+| Task ticked in `board/p0.md` | Find source issue, update issue-level schedule.json |
+| Task ticked in `board/done.md` | Find source issue, update issue-level schedule.json |
+| Event edited in `board/p0.md` | Find source issue, update issue-level schedule.json |
+
+After an issue-level schedule.json update, aggregation re-runs to keep board-level files consistent. The watcher tracks the source of each change to avoid infinite loops.
+
+History.csv and done.md graphs are **not** updated in real-time — only at end of day.
 
 ---
 
@@ -266,6 +297,7 @@ Everything in schedule.json (`p0`, `p1`, `done`) syncs to CalDAV. `p2` has no Ca
   ```
   DESCRIPTION:Install ROCm drivers\nConfigure PyTorch
   ```
+- Shabits VEVENTs use RRULE for their recurring days (e.g. `RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,SU`)
 
 ### VTODO (tasks)
 
@@ -275,8 +307,7 @@ Everything in schedule.json (`p0`, `p1`, `done`) syncs to CalDAV. `p2` has no Ca
 - `CATEGORIES:board-task,{issue}` — e.g. `CATEGORIES:board-task,cv`
 - STATUS: NEEDS-ACTION / COMPLETED
 - `DUE`: set to end of event time_block (p0), or event `due` date (p1 without time_blocks)
-- Deleted 3 days after completion
-- `done` events: no new VTODOs generated — tasks already completed, DESCRIPTION updated only
+- When a task moves to `done`, its VTODO STATUS becomes COMPLETED — the VTODO remains in CalDAV for 3 days then is deleted
 
 ### CalDAV sync summary
 
@@ -285,13 +316,13 @@ Everything in schedule.json (`p0`, `p1`, `done`) syncs to CalDAV. `p2` has no Ca
 | p0 (has time_blocks) | Yes | Yes, one per task |
 | p1 (has time_blocks) | Yes | Yes, one per task |
 | p1 (no time_blocks) | No | Yes, one per task with due date |
-| done | Update DESCRIPTION only | No |
+| done | Update DESCRIPTION only | Existing VTODOs stay as COMPLETED, deleted after 3 days |
 | p2 | No | No |
 
 ### What replaces what
 
 - Old `board-sync` (p0/p1/p2 directory scanning) → replaced by this CalDAV generator
-- `shabits-caldav` → unchanged, habits remain a separate concern
+- `shabits-caldav` → merged into `board-sync`; shabits handled as recurring VEVENTs with RRULE
 
 ---
 
@@ -313,6 +344,7 @@ Run per issue, then aggregate:
    - For shabits: flag yesterday's missed habits, mark "must complete today" if unconfirmed
 
 5. Regenerate p0.md and p1.md for tomorrow
+   - Night routine shabits appear in "Shabits — Last Night" section of tomorrow's p0.md
 
 6. Run CalDAV generation → vdirsyncer sync (including VEVENT DESCRIPTION updates for "done" events)
 
@@ -336,9 +368,10 @@ Always manual — you or Claude Code moves an event title from p2.md into p1.md 
 - `board/schedule.json` — all issues' schedule.json merged
 - `board/history.csv` — all issues' history.csv merged
 
-Aggregation triggers:
+Aggregation is triggered by:
 
 - Any issue-level `schedule.json` change (file watcher)
+- Any board-level md edit (file watcher, after propagating back to the source issue)
 - End-of-day timer (always)
 
 ---
@@ -362,11 +395,11 @@ Aggregation triggers:
 
 | Script | Role |
 |---|---|
-| `board-generate` | schedule.json → p0.md / p1.md (per issue) |
-| `board-sync` | schedule.json → ICS files + vdirsyncer (replaces old board-sync) |
-| `board-overflow` | end-of-day: p0→history.csv/p1, done.md, CalDAV sync |
+| `board-generate` | schedule.json → p0.md / p1.md / done.md (per issue) |
+| `board-sync` | schedule.json → ICS files + vdirsyncer; includes shabits recurring VEVENTs |
+| `board-overflow` | end-of-day: p0→done/p1, prune, history.csv, done.md, CalDAV sync |
 | `board-aggregate` | merge all issues → board-level files |
-| `board-watch` | file watcher: md↔schedule.json bidirectional sync + triggers aggregate |
+| `board-watch` | file watcher: md↔schedule.json bidirectional sync (issue and board level) + triggers aggregate |
 | `board-pages` | generate done.md + graphs from history.csv (called by overflow) |
 
 ---
@@ -377,7 +410,8 @@ The current `board/SKILL.md` is for the old system and must be fully rewritten a
 
 - The `issues/` directory layout and grouping folder rules
 - How to read and write `schedule.json` (adding events, tasks, promoting p2→p1)
-- How to interpret `p0.md`, `p1.md`, `p2.md`
+- How to interpret `p0.md`, `p1.md`, `p2.md`, `done.md`
 - Which scripts to call for which operations
 - The SMART task format and time-horizon lane definitions
 - How CalDAV tags map to issues (`CATEGORIES:board-task,{issue}`)
+- The `actual` field for recording real session times
