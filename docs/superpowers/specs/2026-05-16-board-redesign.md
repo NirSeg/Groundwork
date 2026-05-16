@@ -36,10 +36,18 @@ board/
         └── ai_therapist  →  ~/Projects/AI_Therapist/.board/  ← symlink
 ```
 
-**Symlink rule:** every issue under a grouping folder is a symlink to `~/Projects/<name>/.board/`. Each `.board/` directory lives inside its project repo and contains the full issue layout:
+**Symlink rule:** every issue under a grouping folder is a symlink to `<anywhere>/<name>/.board/`. The `.board/` directory lives inside its project/course/work repo — it is not restricted to `~/Projects/`. Examples:
 
 ```
-~/Projects/AI_Therapist/.board/
+issues/work/ai_therapist        →  ~/Work/AI_Therapist/.board/
+issues/projects/cv              →  ~/Projects/cv/.board/
+issues/reading-material/mvg     →  ~/Book & Courses/mvg/.board/
+```
+
+Each `.board/` directory contains the full issue layout:
+
+```
+.board/
 ├── p0.md
 ├── p1.md
 ├── p2.md
