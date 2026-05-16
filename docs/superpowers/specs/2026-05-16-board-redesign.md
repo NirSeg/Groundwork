@@ -87,7 +87,7 @@ The question that determines lane is **when**. p2 is not a vague backlog — mis
 
 ## schedule.json Format (per issue)
 
-`schedule.json` contains only active p0 and p1 events. There is no `done` section — completed events are written directly to `history.csv` at end of day and never stored back in schedule.json.
+`schedule.json` holds active events (p0, p1) plus a 3-day rolling window of completed events (`done`). The `done` section is the edit window for recent sessions — you can add or correct tasks there, and changes sync back to the corresponding VEVENT DESCRIPTION in CalDAV. After 3 days, events are pruned from `done` and live only in `history.csv`.
 
 ```json
 {
@@ -112,6 +112,18 @@ The question that determines lane is **when**. p2 is not a vague backlog — mis
       "time_blocks": [["10:00", "12:00"]],
       "tasks": []
     }
+  ],
+  "done": [
+    {
+      "id": "debug-loader",
+      "title": "Debug data loader",
+      "date": "2026-05-14",
+      "time_blocks": [["14:00", "16:00"]],
+      "tasks": [
+        {"id": "t1", "text": "Reproduce crash", "done": true},
+        {"id": "t2", "text": "Fix off-by-one in batch index", "done": true}
+      ]
+    }
   ]
 }
 ```
@@ -119,6 +131,7 @@ The question that determines lane is **when**. p2 is not a vague backlog — mis
 - `p0` events: require `date` + `time_blocks`
 - `p1` events: optional `due` and/or `time_blocks`
 - `p2`: not in schedule.json — lives only in p2.md
+- `done`: last 3 days of completed events, pruned at EOD; edits here sync back to VEVENT DESCRIPTION in CalDAV
 - Recurring events (shabits): include `"recurring": {"days": ["Mon", ...]}` field, no RRULE in CalDAV
 
 Board-level `schedule.json` is merged from all issues at aggregation time.
@@ -223,7 +236,7 @@ History.csv and done.md are **not** updated in real-time — only at end of day.
 
 ## CalDAV Generation
 
-Two ICS types generated from schedule.json `p0` and `p1` sections:
+Two ICS types generated from schedule.json `p0`, `p1`, and `done` sections:
 
 ### VEVENT (calendar blocks)
 
@@ -232,8 +245,9 @@ Two ICS types generated from schedule.json `p0` and `p1` sections:
 - UID: UUID5(NAMESPACE_DNS, `event-{issue}-{event-id}-{date}-{start}`)
 - `CATEGORIES:board-event,{issue}` — e.g. `CATEGORIES:board-event,cv`
 - Stays in CalDAV permanently — calendar record of work sessions
-- Generated for both p0 (today) and p1 events that have time_blocks
-- For p1 VEVENTs: tasks are included in the `DESCRIPTION` field (one per line)
+- Generated for p0 and p1 events that have time_blocks; `done` events update their existing VEVENT in place
+- Tasks are always included in the `DESCRIPTION` field (one per line, `[x]` or `[ ]` prefix)
+- Any edit to tasks in `done` section of schedule.json triggers a VEVENT DESCRIPTION update on next CalDAV sync
 
 ### VTODO (tasks)
 
@@ -258,20 +272,22 @@ Run per issue, then aggregate:
 
 ```
 1. For each p0 event:
-   a. All tasks done          → append to history.csv, remove from schedule.json
+   a. All tasks done          → move to "done" section in schedule.json
    b. Unfinished + scheduled for tomorrow → keep in p0, update date
    c. Unfinished + not rescheduled       → move to p1
 
-2. Append today's completed tasks + events to history.csv
+2. Prune "done" events older than 3 days: append to history.csv, remove from schedule.json
 
-3. Regenerate done.md from history.csv (last 3 days) + graphs
+3. Append today's completed tasks + events to history.csv
+
+4. Regenerate done.md from history.csv (last 3 days) + graphs
    - For shabits: flag yesterday's missed habits, mark "must complete today" if unconfirmed
 
-4. Regenerate p0.md and p1.md for tomorrow
+5. Regenerate p0.md and p1.md for tomorrow
 
-5. Run CalDAV generation → vdirsyncer sync
+6. Run CalDAV generation → vdirsyncer sync (including VEVENT DESCRIPTION updates for "done" events)
 
-6. Aggregate board-level files
+7. Aggregate board-level files
 ```
 
 ## p2 → p1 Graduation
