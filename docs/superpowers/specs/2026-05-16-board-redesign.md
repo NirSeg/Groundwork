@@ -13,7 +13,7 @@ board/
 ├── p0.md              ← generated, today's schedule (chronological, aggregated)
 ├── p1.md              ← generated, this week (aggregated)
 ├── p2.md              ← flat list, manually maintained (aggregated)
-├── done.md            ← last 3 days completions + graphs (generated, updated EOD)
+├── done.md            ← daily review: last 3 days completions + graphs + missed shabits (generated, updated EOD)
 ├── schedule.json      ← merged from all issues (generated)
 ├── history.csv        ← all past tasks + events (merged, updated EOD)
 ├── SKILL.md
@@ -87,6 +87,8 @@ The question that determines lane is **when**. p2 is not a vague backlog — mis
 
 ## schedule.json Format (per issue)
 
+`schedule.json` contains only active p0 and p1 events. There is no `done` section — completed events are written directly to `history.csv` at end of day and never stored back in schedule.json.
+
 ```json
 {
   "issue": "cv",
@@ -110,17 +112,6 @@ The question that determines lane is **when**. p2 is not a vague backlog — mis
       "time_blocks": [["10:00", "12:00"]],
       "tasks": []
     }
-  ],
-  "done": [
-    {
-      "id": "debug-loader",
-      "title": "Debug data loader",
-      "date": "2026-05-14",
-      "time_blocks": [["14:00", "16:00"]],
-      "tasks": [
-        {"id": "t1", "text": "Reproduce crash", "done": true}
-      ]
-    }
   ]
 }
 ```
@@ -128,7 +119,6 @@ The question that determines lane is **when**. p2 is not a vague backlog — mis
 - `p0` events: require `date` + `time_blocks`
 - `p1` events: optional `due` and/or `time_blocks`
 - `p2`: not in schedule.json — lives only in p2.md
-- `done`: last 3 days of completed events only, pruned at EOD
 - Recurring events (shabits): include `"recurring": {"days": ["Mon", ...]}` field, no RRULE in CalDAV
 
 Board-level `schedule.json` is merged from all issues at aggregation time.
@@ -188,6 +178,21 @@ Flat list of event titles only — no dates, no tasks, no connection to schedule
 ## Incremental pipeline
 ```
 
+## done.md Format
+
+Daily review interface generated from `history.csv` and `shabits.csv`. Updated at end of day only.
+
+Content per issue (last 3 days):
+- Completed events with their tasks, grouped by date
+- Completion graphs from `graphs/`
+
+For shabits specifically:
+- Shows which habits were missed yesterday
+- Missed habits that were actually done but not ticked off can be retroactively marked complete
+- Any habit missed yesterday that cannot be confirmed done is flagged **"must complete today"**
+
+Night routine shabits (prepare-for-bed, evening meditation, read-before-sleep) are treated as the next morning's tasks — they appear in the next day's `done.md` review window.
+
 ---
 
 ## Bidirectional Sync
@@ -228,16 +233,17 @@ Two ICS types generated from schedule.json `p0` and `p1` sections:
 - `CATEGORIES:board-event,{issue}` — e.g. `CATEGORIES:board-event,cv`
 - Stays in CalDAV permanently — calendar record of work sessions
 - Generated for both p0 (today) and p1 events that have time_blocks
+- For p1 VEVENTs: tasks are included in the `DESCRIPTION` field (one per line)
 
 ### VTODO (tasks)
 
-- One per task
+- One per task — **p0 only**
 - Filename: `task-{issue}-{event-id}-{task-id}-{date}.ics`
 - UID: UUID5(NAMESPACE_DNS, `task-{issue}-{event-id}-{task-id}-{date}`)
 - `CATEGORIES:board-task,{issue}` — e.g. `CATEGORIES:board-task,cv`
 - STATUS: NEEDS-ACTION / COMPLETED
 - Deleted 3 days after completion
-- Generated for p0 tasks; p1 events without time_blocks get a single VTODO with due date
+- p1 events are **not** represented as VTODOs — tasks for p1 events appear only in the DESCRIPTION field of the corresponding VEVENT
 
 ### What replaces what
 
@@ -252,21 +258,20 @@ Run per issue, then aggregate:
 
 ```
 1. For each p0 event:
-   a. All tasks done          → move to "done" section in schedule.json
+   a. All tasks done          → append to history.csv, remove from schedule.json
    b. Unfinished + scheduled for tomorrow → keep in p0, update date
    c. Unfinished + not rescheduled       → move to p1
 
-2. Prune "done" events older than 3 days from schedule.json
+2. Append today's completed tasks + events to history.csv
 
-3. Append today's completed tasks + events to history.csv
+3. Regenerate done.md from history.csv (last 3 days) + graphs
+   - For shabits: flag yesterday's missed habits, mark "must complete today" if unconfirmed
 
-4. Regenerate done.md from history.csv (last 3 days) + graphs
+4. Regenerate p0.md and p1.md for tomorrow
 
-5. Regenerate p0.md and p1.md for tomorrow
+5. Run CalDAV generation → vdirsyncer sync
 
-6. Run CalDAV generation → vdirsyncer sync
-
-7. Aggregate board-level files
+6. Aggregate board-level files
 ```
 
 ## p2 → p1 Graduation
@@ -314,7 +319,7 @@ Aggregation triggers:
 |---|---|
 | `board-generate` | schedule.json → p0.md / p1.md (per issue) |
 | `board-sync` | schedule.json → ICS files + vdirsyncer (replaces old board-sync) |
-| `board-overflow` | end-of-day: p0→done/p1, prune, history.csv, done.md |
+| `board-overflow` | end-of-day: p0→history.csv/p1, done.md, CalDAV sync |
 | `board-aggregate` | merge all issues → board-level files |
 | `board-watch` | file watcher: md↔schedule.json bidirectional sync + triggers aggregate |
 | `board-pages` | generate done.md + graphs from history.csv (called by overflow) |
@@ -329,5 +334,5 @@ The current `board/SKILL.md` is for the old system and must be fully rewritten a
 - How to read and write `schedule.json` (adding events, tasks, promoting p2→p1)
 - How to interpret `p0.md`, `p1.md`, `p2.md`
 - Which scripts to call for which operations
-- The SMART task format and Eisenhower lane definitions
+- The SMART task format and time-horizon lane definitions
 - How CalDAV tags map to issues (`CATEGORIES:board-task,{issue}`)
