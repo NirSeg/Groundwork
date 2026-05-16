@@ -133,7 +133,7 @@ The question that determines lane is **when**. p2 is not a vague backlog — mis
 - `p1` events: optional `due` and/or `time_blocks`
 - `p2`: not in schedule.json — lives only in p2.md
 - `done`: last 3 days of completed events, pruned at EOD; edits here sync back to VEVENT DESCRIPTION in CalDAV
-- `actual` field (optional, `done` events only): `["HH:MM", "HH:MM"]` actual start/end of the session — used for actual-vs-planned graphs. If absent, `time_blocks` is used as the estimate. **Deferred — fill in once the system is running and you decide you want it.**
+- `actual` field (optional, `done` events only): `["HH:MM", "HH:MM"]` actual start/end of the session — used for actual-vs-planned graphs. If absent, `time_blocks` is used as the estimate. Time tracking is at the event level only — no per-task time intervals.
 - Recurring events (shabits): include `"recurring": {"days": ["Mon", ...]}` field; VEVENTs are generated fresh per day (no RRULE) so each occurrence can have its own DESCRIPTION
 
 Board-level `schedule.json` is merged from all issues at aggregation time.
@@ -297,7 +297,7 @@ Everything in schedule.json (`p0`, `p1`, `done`) syncs to CalDAV. `p2` has no Ca
   ```
   DESCRIPTION:Install ROCm drivers\nConfigure PyTorch
   ```
-- Shabits VEVENTs are generated fresh per day (no RRULE) so each occurrence can carry its own DESCRIPTION; handled by `shabits-caldav` separately
+- Shabits VEVENTs are generated for **today only** — no future calendar blocks. Tomorrow's get generated tomorrow. Handled by `shabits-caldav` separately.
 
 ### VTODO (tasks)
 
