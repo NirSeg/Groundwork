@@ -26,13 +26,15 @@ board/
 
 Each issue owns its own `schedule.json`, `history.csv`, `p0.md`, `p1.md`, `p2.md`. The board-level files are aggregated views — never edit them directly.
 
-## Priority Lanes (Eisenhower)
+## Priority Lanes — Time Horizon
 
-| Lane | Meaning | Has in schedule.json |
-|------|---------|----------------------|
-| p0 | Urgent + Important — scheduled for today | `date` + `time_blocks` required |
-| p1 | Important, not urgent — due this week | `due` and/or `time_blocks` optional |
-| p2 | Backlog — future ideas | Not in schedule.json — p2.md only |
+| Lane | Horizon | Decision rule | In schedule.json |
+|------|---------|---------------|-----------------|
+| p0 | Today | Has a scheduled time block for today | `date` + `time_blocks` required |
+| p1 | This week | Due date or planned time block within the week | `due` and/or `time_blocks` optional |
+| p2 | Someday | Future idea — no date, no schedule | Not present — p2.md only |
+
+The question that determines lane is **when**, not urgency or importance.
 
 ## schedule.json Format (per issue)
 

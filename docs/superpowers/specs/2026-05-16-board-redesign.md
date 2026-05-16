@@ -2,7 +2,7 @@
 
 ## Goal
 
-Restructure the Groundwork board from a flat topic-folder layout into a hierarchical `issues/` system driven by `schedule.json` as the source of truth, with Eisenhower-mapped priorities, bidirectional md↔json sync, CalDAV generation, and end-of-day overflow logic.
+Restructure the Groundwork board from a flat topic-folder layout into a hierarchical `issues/` system driven by `schedule.json` as the source of truth, with time-horizon priorities, bidirectional md↔json sync, CalDAV generation, and end-of-day overflow logic.
 
 ---
 
@@ -29,11 +29,11 @@ board/
     ├── projects/          ← grouping folder only, no own files
     │   └── cv  →  ~/Projects/cv/.board/          ← symlink
     ├── reading-material/  ← grouping folder only
-    │   ├── mvg     →  ~/Projects/mvg/.board/     ← symlink
-    │   ├── papers  →  ~/Projects/papers/.board/  ← symlink
-    │   └── rl      →  ~/Projects/rl/.board/      ← symlink
+    │   ├── mvg     →  ~/Study/mvg/.board/     ← symlink
+    │   ├── papers  →  ~/Study/papers/.board/  ← symlink
+    │   └── rl      →  ~/Study/rl/.board/      ← symlink
     └── work/              ← grouping folder only
-        └── ai_therapist  →  ~/Projects/AI_Therapist/.board/  ← symlink
+        └── ai_therapist  →  ~/Work/AI_Therapist/.board/  ← symlink
 ```
 
 **Symlink rule:** every issue under a grouping folder is a symlink to `<anywhere>/<name>/.board/`. The `.board/` directory lives inside its project/course/work repo — it is not restricted to `~/Projects/`. Examples:
@@ -64,13 +64,15 @@ Grouping folders (`projects/`, `reading-material/`, `work/`) are real directorie
 
 ---
 
-## Eisenhower Mapping
+## Priority Lanes — Time Horizon Model
 
-| Lane | Quadrant | Meaning |
-|------|----------|---------|
-| p0 | Urgent + Important | Scheduled for today — has time blocks |
-| p1 | Important, not urgent | Due this week — may have time blocks and/or due date |
-| p2 | Backlog | Future ideas — flat list of event titles, no dates |
+| Lane | Horizon | Decision rule |
+|------|---------|---------------|
+| p0 | Today | Has a scheduled time block for today |
+| p1 | This week | Has a due date or planned time block within the week |
+| p2 | Someday | Future idea — no date, no schedule |
+
+The question that determines lane is **when**, not urgency or importance. When something in p2 gets a due date or you decide to work on it this week, it moves to p1. When you schedule a time block for today, it moves to p0.
 
 Tasks follow the SMART model (Specific, Measurable, Achievable, Relevant, Time-bounded).
 
@@ -212,6 +214,7 @@ History.csv and done.md are **not** updated in real-time — only at end of day.
 Two ICS types generated from schedule.json `p0` and `p1` sections:
 
 ### VEVENT (calendar blocks)
+
 - One per time_block per event
 - Filename: `event-{issue}-{event-id}-{date}-{start}.ics`
 - UID: UUID5(NAMESPACE_DNS, `event-{issue}-{event-id}-{date}-{start}`)
@@ -220,6 +223,7 @@ Two ICS types generated from schedule.json `p0` and `p1` sections:
 - Generated for both p0 (today) and p1 events that have time_blocks
 
 ### VTODO (tasks)
+
 - One per task
 - Filename: `task-{issue}-{event-id}-{task-id}-{date}.ics`
 - UID: UUID5(NAMESPACE_DNS, `task-{issue}-{event-id}-{task-id}-{date}`)
@@ -229,6 +233,7 @@ Two ICS types generated from schedule.json `p0` and `p1` sections:
 - Generated for p0 tasks; p1 events without time_blocks get a single VTODO with due date
 
 ### What replaces what
+
 - Old `board-sync` (p0/p1/p2 directory scanning) → replaced by this CalDAV generator
 - `shabits-caldav` → unchanged, habits remain a separate concern
 
@@ -266,6 +271,7 @@ Always manual — you or Claude Code moves an event title from p2.md into p1.md 
 ## Aggregation
 
 `board-aggregate` script merges all issues into board-level files:
+
 - `board/p0.md` — all issues' p0, sorted chronologically across issues
 - `board/p1.md` — all issues' p1, grouped by issue
 - `board/p2.md` — all issues' p2, grouped by issue
@@ -274,6 +280,7 @@ Always manual — you or Claude Code moves an event title from p2.md into p1.md 
 - `board/history.csv` — all issues' history.csv merged
 
 Aggregation triggers:
+
 - Any issue-level `schedule.json` change (file watcher)
 - End-of-day timer (always)
 
@@ -310,6 +317,7 @@ Aggregation triggers:
 ## SKILL.md
 
 The current `board/SKILL.md` is for the old system and must be fully rewritten as part of this implementation. The new SKILL.md should document:
+
 - The `issues/` directory layout and grouping folder rules
 - How to read and write `schedule.json` (adding events, tasks, promoting p2→p1)
 - How to interpret `p0.md`, `p1.md`, `p2.md`
